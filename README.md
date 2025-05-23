@@ -129,5 +129,7 @@ IGNORED_EXTENSIONS = [
 
 - Increase time.sleep() duration if working with large files or slow disks
 
+## Credit
+-  Santo Mukiza
 
 
