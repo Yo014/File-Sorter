@@ -6,26 +6,6 @@ import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-# --- Configuration ---
-DOWNLOAD_DIR = "/Users/santomukiza/Downloads"  # IMPORTANT: Change this to your actual downloads directory
-DESTINATION_BASE_DIR = "/Users/santomukiza/Desktop" # IMPORTANT: Change this to your desired base directory for sorted files
-
-# Define categories and their corresponding file extensions
-# You can customize and add more categories as needed
-FILE_CATEGORIES = {
-    "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp"],
-    "Documents": [".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt", ".xls", ".xlsx", ".ppt", ".pptx"],
-    "Videos": [".mp4", ".mov", ".avi", ".mkv", ".flv", ".wmv"],
-    "Audio": [".mp3", ".wav", ".aac", ".flac", ".ogg"],
-    "books":[".epub", ".mobi", ".azw3"],
-    "Archives": [".zip", ".rar", ".7z", ".tar", ".gz"],
-    "Executables": [".exe", ".dmg", ".app", ".msi"],
-    "Code": [".py", ".js", ".html", ".css", ".java", ".c", ".cpp", ".h", ".json", ".xml"],
-    "Spreadsheets": [".csv", ".xlsx", ".xls"], # Specific for spreadsheets, can be merged with Documents
-    "Presentations": [".pptx", ".ppt"], # Specific for presentations, can be merged with Documents
-    "Torrents": [".torrent"]
-}
-
 # List of temporary file extensions to ignore
 # Add any other temporary file patterns you observe
 IGNORED_EXTENSIONS = [
@@ -37,94 +17,99 @@ IGNORED_EXTENSIONS = [
     ".DS_Store"     # macOS specific metadata file
 ]
 
-# --- Helper Functions ---
+class FileHandler(FileSystemEventHandler):
 
-def create_directory_if_not_exists(directory_path):
-    """Creates a directory if it doesn't already exist."""
-    os.makedirs(directory_path, exist_ok=True)
-    print(f"Ensured directory exists: {directory_path}")
+    FILE_CATEGORIES = {
+        "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp"],
+        "Documents": [".pdf", ".doc", ".docx", ".txt"],
+        "Videos": [".mp4", ".mov", ".avi", ".mkv"],
+        "Audio": [".mp3", ".wav", ".aac"],
+        "Archives": [".zip", ".rar", ".tar", ".gz", ".7z"],
+        "Executables": [".exe", ".msi", ".bin", ".app"],
+        "Code": [".py", ".js", ".html", ".css", ".java"],
+        "Books": [".epub", ".mobi"],
+        "Spreadsheets": [".xls", ".xlsx", ".csv"],
+        "Presentations": [".ppt", ".pptx"],
+        "Torrents": [".torrent"]
+    }
 
-def get_file_category(filename):
-    """Determines the category of a file based on its extension."""
-    _, file_extension = os.path.splitext(filename)
-    file_extension = file_extension.lower()
+    def __init__(self, destination_folder):
+        self.destination_folder = destination_folder
 
-    for category, extensions in FILE_CATEGORIES.items():
-        if file_extension in extensions:
-            return category
-    return "Others" # Default category for unknown file types
+    def ensure_directory(self, path):
+        if not os.path.exists(path):
+            os.makedirs(path)
+            print(f"Ensured directory exists: {path}")
 
-def move_file(source_path, destination_dir):
-    """Moves a file from source_path to destination_dir."""
-    try:
-        create_directory_if_not_exists(destination_dir)
-        destination_path = os.path.join(destination_dir, os.path.basename(source_path))
+    def is_temporary_file(self, filename):
+        return any(filename.endswith(ext) for ext in IGNORED_EXTENSIONS)
 
-        # Handle potential file name conflicts
+    def move_file(self, src):
+        """
+        Move a file from `src` to its corresponding category folder.
+
+        Files are renamed if a file with the same name already exists in the destination folder.
+        The new name is created by appending a counter to the original filename (e.g., `document_1.pdf`).
+        """
+        file_ext = os.path.splitext(src)[1].lower()
+        destination_category = next((category for category, extensions in self.FILE_CATEGORIES.items() if file_ext in extensions), "Others")
+        destination_path = os.path.join(self.destination_folder, destination_category)
+
+        self.ensure_directory(destination_path)
+
+        filename = os.path.basename(src)
+        final_destination = os.path.join(destination_path, filename)
+
         counter = 1
-        original_destination_path = destination_path
-        while os.path.exists(destination_path):
-            name, ext = os.path.splitext(os.path.basename(original_destination_path))
-            destination_path = os.path.join(destination_dir, f"{name}_{counter}{ext}")
+        while os.path.exists(final_destination):
+            base, extension = os.path.splitext(filename)
+            new_filename = f"{base}_{counter}{extension}"
+            final_destination = os.path.join(destination_path, new_filename)
             counter += 1
 
-        shutil.move(source_path, destination_path)
-        print(f"Moved: '{os.path.basename(source_path)}' to '{destination_dir}'")
-    except Exception as e:
-        print(f"Error moving file {source_path}: {e}")
-
-# --- Event Handler Class ---
-
-class FileSorterHandler(FileSystemEventHandler):
-    """Handles file system events (like file creation)."""
+        try:
+            shutil.move(src, final_destination)
+            print(f"Moved: '{filename}' to '{final_destination}'")
+        except shutil.Error as e:
+            print(f"Error moving file {src}: {e}")
 
     def on_created(self, event):
-        """Called when a file or directory is created."""
-        if not event.is_directory:
-            file_path = event.src_path
-            filename = os.path.basename(file_path)
-            _, file_extension = os.path.splitext(filename)
-            file_extension = file_extension.lower()
+        if event.is_directory:
+            return
 
-            # Ignore temporary/incomplete download files
-            if file_extension in IGNORED_EXTENSIONS or filename.startswith('.'):
-                print(f"Ignoring temporary or hidden file: {filename}")
-                return
+        filename = os.path.basename(event.src_path)
 
+        if self.is_temporary_file(filename) or filename.startswith('.'):
+            print(f"Ignoring temporary or hidden file: {filename}")
+            return
+
+        time.sleep(1)  # Wait to ensure the file is completely written
+        if os.path.exists(event.src_path):
             print(f"Detected new file: {filename}")
+            self.move_file(event.src_path)
+        else:
+            print(f"File {filename} disappeared before it could be processed.")
 
-            # Give the file a moment to be fully written to disk
-            # This delay is still useful for large files even if not temporary
-            time.sleep(1)
+def main():
+    downloads_folder = os.path.expanduser("~/Downloads")# Adjust this path if necessary
+    destination_folder = os.path.expanduser("~/Desktop")# Adjust this path if necessary
 
-            if os.path.exists(file_path): # Check if the file still exists after the delay
-                category = get_file_category(filename)
-                destination_dir = os.path.join(DESTINATION_BASE_DIR, category)
-                move_file(file_path, destination_dir)
-            else:
-                print(f"File {filename} disappeared before it could be processed.")
-
-# --- Main Script Execution ---
-
-if __name__ == "__main__":
-    # Ensure the base destination directory exists
-    create_directory_if_not_exists(DESTINATION_BASE_DIR)
-
-    # Initialize the observer and event handler
-    event_handler = FileSorterHandler()
+    event_handler = FileHandler(destination_folder)
     observer = Observer()
+    observer.schedule(event_handler, downloads_folder, recursive=False)
+    observer.start()
 
-    # Schedule the observer to watch the download directory
-    observer.schedule(event_handler, DOWNLOAD_DIR, recursive=False) # recursive=True if you want to watch subdirectories
-
-    print(f"Starting file sorter. Monitoring '{DOWNLOAD_DIR}' for new files...")
+    print(f"Starting file sorter. Monitoring '{downloads_folder}' for new files...")
     print("Press Ctrl+C to stop.")
 
     try:
-        observer.start()
         while True:
-            time.sleep(20) # Keep the main thread alive
+            time.sleep(30)
     except KeyboardInterrupt:
         observer.stop()
         print("File sorter stopped.")
+
     observer.join()
+
+if __name__ == "__main__":
+    main()

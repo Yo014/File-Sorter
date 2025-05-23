@@ -47,12 +47,9 @@ Open the `File-Sorter.py` file and modify the following variables to suit your n
 ### Directory Settings
 
 ```python
-# Set this to your actual downloads directory
-DOWNLOAD_DIR = "/Users/santomukiza/Downloads"  # IMPORTANT: Change this path
+    downloads_folder = os.path.expanduser("~/Downloads")# Adjust this path if necessary
+    destination_folder = os.path.expanduser("~/Desktop")# Adjust this path if necessary
 
-# Set this to your desired base directory for sorted files (e.g., Desktop)
-DESTINATION_BASE_DIR = "/Users/santomukiza/Desktop"  # IMPORTANT: Change this path
-## File Categories
 ```
 Customize the file categories and their corresponding extensions in the `FILE_CATEGORIES` dictionary.
 
@@ -69,13 +66,13 @@ python File-Sorter.py
 ## Script Behavior
 
 The script will:
-- Begin monitoring your `DOWNLOAD_DIR`
+- Begin monitoring your `downloads_folder`
 - Display terminal messages when files are detected and moved
 - **To stop:** Press `Ctrl+C` in the terminal
 
 ## How It Works
 
-The script uses the `watchdog` library's `Observer` to monitor `DOWNLOAD_DIR`:
+The script uses the `watchdog` library's `Observer` to monitor `downloads_folder`:
 
 ### Event Detection
 - `FileSorterHandler` (inherits from `FileSystemEventHandler`) listens for `on_created` events
@@ -88,7 +85,7 @@ The script uses the `watchdog` library's `Observer` to monitor `DOWNLOAD_DIR`:
 - Includes `time.sleep(1)` to ensure complete file writes (especially for large files)
 
 ### Category Determination
-- `get_file_category()` matches extensions to predefined categories
+- matches extensions to predefined categories
 - Unrecognized extensions go to "Others"
 
 ### Directory Management
